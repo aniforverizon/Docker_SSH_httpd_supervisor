@@ -1,7 +1,5 @@
 FROM centos:7
 
-MAINTAINER ashrithr
-
 USER root
 
 # Install packages
