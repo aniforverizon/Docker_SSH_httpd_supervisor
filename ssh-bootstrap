@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+
+source /etc/ssh-bootstrap.conf
+
+get_password ()
+{
+  echo $(head -n 4096 /dev/urandom | tr -cd '[:alnum:]' | head -c ${1})
+}
+
+if [[ -f /etc/.ssh-bootstrap ]]; then
+  echo "SSH bootstrap already done"
+else
+  echo "Setting root user password"
+  echo "root:${SSH_ROOT_PASSWORD}" | chpasswd
+
+  # Generate new host keys
+  rm -f /etc/ssh/{ssh_host_rsa_key,ssh_host_rsa_key.pub,ssh_host_dsa_key,ssh_host_dsa_key.pub}
+  ssh-keygen -q -C "" -N "" -t rsa -f /etc/ssh/ssh_host_rsa_key
+  ssh-keygen -q -C "" -N "" -t dsa -f /etc/ssh/ssh_host_dsa_key
+  if [ -x /sbin/restorecon ]; then
+    /sbin/restorecon /etc/ssh/ssh_host_rsa_key.pub
+    /sbin/restorecon /etc/ssh/ssh_host_dsa_key.pub
+  fi
+
+  # To log users ssh'ing into
+  touch /var/log/lastlog
+  chmod 664 /var/log/lastlog
+
+  OPTS_SSH_USER_PASSWORD="${SSH_USER_PASSWORD:-$(get_password 8)}"
+
+  echo "Creating $SSH_USER"
+  useradd -u 500 -m -G users,wheel -d ${SSH_USER_HOME_DIR} -s ${SSH_USER_SHELL} ${SSH_USER}
+  echo "${SSH_USER}:${OPTS_SSH_USER_PASSWORD}" | chpasswd
+  echo "${SSH_USER} ${SSH_SUDO}" >> /etc/sudoers
+
+  cat <<-EOT
+
+  ================================================================================
+  SSH Credentials
+  --------------------------------------------------------------------------------
+  root : ${SSH_ROOT_PASSWORD}
+  ${SSH_USER} : ${OPTS_SSH_USER_PASSWORD}
+  sudo : ${SSH_SUDO}
+  --------------------------------------------------------------------------------
+    
+EOT
+fi
+
+touch /etc/.ssh-bootstrap
